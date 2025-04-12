@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Sync Web</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Telegram Sync</h1>
+        </header>
+        
+        <div class="status-panel">
+            <div class="status-info">
+                <div class="user-info" id="user-info">Desconectado</div>
+                <div class="connection-status" id="connection-status">Desconectado</div>
+                <div id="session-info" class="session-info">Sessão: <span id="current-session">nenhuma</span></div>
+            </div>
+            <div class="control-buttons">
+                <button id="connect-btn" class="btn btn-primary">Conectar</button>
+                <button id="disconnect-btn" class="btn btn-danger" disabled>Desconectar</button>
+                <button id="manage-sessions-btn" class="btn btn-secondary">Gerenciar Contas</button>
+            </div>
+        </div>
+        
+        <!-- Modal para conectar nova conta -->
+        <div id="connect-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Conectar ao Telegram</h2>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="session-name">Nome da Sessão:</label>
+                        <div class="input-group">
+                            <input type="text" id="session-name" class="form-control" placeholder="telegram_session" value="telegram_session">
+                            <button id="connect-session-btn" class="btn btn-primary">Conectar</button>
+                        </div>
+                        <p class="form-help">Use um nome diferente para cada conta do Telegram.</p>
+                    </div>
+                    <div class="form-group" id="phone-group">
+                        <label for="phone-input">Número de Telefone:</label>
+                        <input type="text" id="phone-input" class="form-control" placeholder="+5511999999999">
+                    </div>
+                    <!-- Grupo para pedir o código de login -->
+                    <div class="form-group" id="code-group" style="display: none;">
+                        <label for="code-input">Código de Login:</label>
+                        <div class="input-group">
+                             <input type="text" id="code-input" class="form-control">
+                             <button id="submit-code-btn" class="btn btn-primary">Enviar Código</button>
+                        </div>
+                        <p class="form-help">Verifique seu app Telegram para o código.</p>
+                    </div>
+                    <!-- Grupo para pedir a senha 2FA -->
+                    <div class="form-group" id="password-group" style="display: none;">
+                        <label for="password-input">Senha (2FA):</label>
+                         <div class="input-group">
+                             <input type="password" id="password-input" class="form-control">
+                             <button id="submit-password-btn" class="btn btn-primary">Enviar Senha</button>
+                        </div>
+                         <p class="form-help">Digite sua senha de autenticação de dois fatores.</p>
+                    </div>
+                    <div id="connect-status" class="connect-status-message"></div> <!-- Área para mensagens de status -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Modal para gerenciar sessões -->
+        <div id="manage-sessions-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Gerenciar Contas do Telegram</h2>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <p>Sessões disponíveis:</p>
+                    <div id="sessions-list" class="sessions-list">
+                        <div class="no-sessions">Nenhuma sessão encontrada</div>
+                    </div>
+                    <button id="new-session-btn" class="btn btn-primary">Nova Conta</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="logs-panel">
+            <div class="logs-header">
+                <h2>Logs</h2>
+                <div class="logs-controls">
+                    <div class="auto-clear-controls">
+                        <label class="switch">
+                            <input type="checkbox" id="auto-clear-toggle" checked>
+                            <span class="slider round"></span>
+                        </label>
+                        <span>Limpar a cada</span>
+                        <input type="number" id="clear-interval" min="1" max="60" value="5" class="number-input">
+                        <span>minutos</span>
+                    </div>
+                    <button id="clear-logs-btn" class="btn btn-sm btn-secondary">Limpar Agora</button>
+                </div>
+            </div>
+            <div class="logs-container" id="logs-container">
+                <!-- Os logs serão adicionados aqui -->
+            </div>
+        </div>
+
+        <!-- Informação do Grupo TheReconquestMap (ID Fixo) -->
+        <div class="reconquest-map-info" id="reconquest-map-info-display" style="display: none; margin-top: 20px; padding: 10px; background-color: #e9ecef; border-radius: 4px; border: 1px solid #ced4da;">
+            <strong>ID do Grupo TheReconquestMap:</strong> <span id="reconquest-map-id-span">Não encontrado</span>
+            <button id="copy-group-id-btn" class="btn btn-sm btn-secondary" style="margin-left: 10px;">Copiar ID</button>
+             <button id="refresh-chats-btn" class="btn btn-sm btn-secondary" style="margin-left: 10px;">Atualizar Chats (para encontrar ID)</button>
+        </div>
+    </div>
+
+    <!-- Overlay para modais -->
+    <div id="modal-overlay" class="modal-overlay"></div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="/static/js/main.js"></script>
+
+    <!-- Adicionar estilo para a mensagem de status -->
+    <style>
+        .connect-status-message {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none; /* Escondido por padrão */
+            font-weight: 500;
+        }
+        .connect-status-message.info {
+            background-color: #e2f3fe;
+            border-left: 4px solid #007bff;
+            color: #004085;
+        }
+        .connect-status-message.error {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+        }
+    </style>
+</body>
+</html> 

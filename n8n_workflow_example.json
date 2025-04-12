@@ -1,0 +1,184 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telegram-sync",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "=## Mensagem do Telegram\n**De/Para:** {{$node[\"Webhook\"].json[\"user_name\"]}} ({{$node[\"Webhook\"].json[\"username\"]}})\n**Tipo:** {{$node[\"Webhook\"].json[\"direction\"]}}\n**Conteúdo:** {{$node[\"Webhook\"].json[\"message\"]}}\n**Data/Hora:** {{$node[\"Webhook\"].json[\"timestamp\"]}}",
+        "options": {}
+      },
+      "name": "Preparar Conteúdo",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oauth2",
+        "operation": "lookup",
+        "lookupValues": "={{$node[\"Webhook\"].json[\"user_id\"]}}",
+        "returnAll": true
+      },
+      "name": "Consultar Pipedrive",
+      "type": "n8n-nodes-base.pipedrive",
+      "typeVersion": 1,
+      "position": [
+        670,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$node[\"Consultar Pipedrive\"].json[\"success\"]}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Se Contato Existir",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "append",
+        "fileId": "=your-google-doc-id",
+        "options": {}
+      },
+      "name": "Atualizar Documento",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 1,
+      "position": [
+        1090,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "person",
+        "name": "={{$node[\"Webhook\"].json[\"user_name\"]}}",
+        "additionalFields": {}
+      },
+      "name": "Criar Contato",
+      "type": "n8n-nodes-base.pipedrive",
+      "typeVersion": 1,
+      "position": [
+        1090,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"status\":\"success\",\"message\":\"Mensagem processada com sucesso\"}",
+        "options": {}
+      },
+      "name": "Resposta HTTP",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Preparar Conteúdo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Conteúdo": {
+      "main": [
+        [
+          {
+            "node": "Consultar Pipedrive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar Pipedrive": {
+      "main": [
+        [
+          {
+            "node": "Se Contato Existir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Se Contato Existir": {
+      "main": [
+        [
+          {
+            "node": "Atualizar Documento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Criar Contato",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar Documento": {
+      "main": [
+        [
+          {
+            "node": "Resposta HTTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Contato": {
+      "main": [
+        [
+          {
+            "node": "Resposta HTTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+} 
