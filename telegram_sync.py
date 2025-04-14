@@ -188,48 +188,154 @@ class TelegramSync:
             raise e
     
     async def setup_handlers(self):
-        """Configura os handlers para mensagens recebidas e enviadas"""
-        
+        """Configura os handlers para mensagens e ações no chat"""
+
+        logger.info("Configurando handlers de eventos...")
+
         # Handler para mensagens recebidas
         @self.client.on(events.NewMessage(incoming=True))
         async def handle_incoming_message(event):
             try:
                 sender = await self.get_user_info(event.sender_id)
-                
+                chat = await event.get_chat() # Obter informações do chat
+                chat_title = getattr(chat, 'title', 'Direct Message') # Título do grupo ou 'Direct Message'
+                is_private = event.is_private # Verificar se é mensagem privada
+
                 payload = {
-                    "user_id": str(sender["id"]),
+                    "event_type": "new_message", # Adicionar tipo de evento
+                    "user_id": str(sender.get("id", event.sender_id)), # Usar sender_id como fallback
                     "user_name": self.format_user_name(sender.get('first_name'), sender.get('last_name')),
                     "username": sender.get("username") or "",
+                    "chat_id": str(event.chat_id), # Adicionar ID do chat
+                    "chat_name": chat_title, # Adicionar nome do chat
+                    "is_private": is_private, # Indicar se é privada
                     "direction": "incoming",
                     "message": event.text,
                     "timestamp": datetime.now().isoformat()
                 }
-                
                 await self.send_to_webhook(payload)
             except Exception as e:
-                logger.error(f"Erro ao processar mensagem recebida: {e}")
-        
+                logger.error(f"Erro ao processar mensagem recebida: {e}", exc_info=True)
+
         # Handler para mensagens enviadas
-        @self.client.on(events.NewMessage(outgoing=True))
+        @self.client.on(events.NewMessage(outgoing=True, forwards=False))
         async def handle_outgoing_message(event):
-            try:
+             try:
                 # Para mensagens enviadas, o destinatário é o chat
-                chat_id = event.chat_id
-                user_info = await self.get_user_info(chat_id)
-                
+                chat = await event.get_chat()
+                chat_id = event.chat_id # Ou chat.id
+                chat_title = getattr(chat, 'title', 'Direct Message')
+                is_private = event.is_private
+
+                # Tentar obter info do destinatário se for privado
+                user_name = chat_title
+                username = ""
+                user_id = str(chat_id)
+                if is_private:
+                    try:
+                         # Usar get_peer_id para obter o ID do usuário do outro lado
+                         peer_user_id = event.message.peer_id.user_id 
+                         peer_user = await self.get_user_info(peer_user_id)
+                         user_name = self.format_user_name(peer_user.get('first_name'), peer_user.get('last_name'))
+                         username = peer_user.get("username", "")
+                         user_id = str(peer_user_id) # Usar o ID do peer
+                    except Exception as e:
+                         logger.warning(f"Não foi possível obter detalhes do usuário para chat privado {chat_id}: {e}")
+
                 payload = {
-                    "user_id": str(chat_id),
-                    "user_name": self.format_user_name(user_info.get('first_name'), user_info.get('last_name')),
-                    "username": user_info.get("username") or "",
+                    "event_type": "new_message", # Adicionar tipo de evento
+                    "user_id": user_id, # ID do chat/usuário destinatário
+                    "user_name": user_name, # Nome do chat ou usuário
+                    "username": username, # Username se for usuário
+                    "chat_id": str(chat_id), # ID da conversa
+                    "chat_name": chat_title,
+                    "is_private": is_private,
                     "direction": "outgoing",
                     "message": event.text,
                     "timestamp": datetime.now().isoformat()
                 }
-                
                 await self.send_to_webhook(payload)
+             except Exception as e:
+                logger.error(f"Erro ao processar mensagem enviada: {e}", exc_info=True)
+
+
+        # NOVO Handler para ações no chat (usuários entrando/saindo etc.)
+        @self.client.on(events.ChatAction)
+        async def handle_chat_action(event):
+            try:
+                # Verificar especificamente se um usuário ENTROU
+                if event.user_joined or event.user_added:
+                    chat = await event.get_chat()
+                    chat_id = event.chat_id
+                    chat_title = getattr(chat, 'title', '(Chat Desconhecido)')
+
+                    joined_user_ids = event.user_ids
+                    if not joined_user_ids:
+                         if hasattr(event, 'user_id') and event.user_id:
+                              joined_user_ids = [event.user_id]
+                         else:
+                              logger.warning(f"Evento ChatAction (join/add) sem user_ids ou user_id no chat {chat_id}")
+                              return
+
+                    logger.info(f"Detectado usuário(s) entrando no chat: {chat_title} ({chat_id}). IDs: {joined_user_ids}")
+
+                    for user_id in joined_user_ids:
+                        user_info = await self.get_user_info(user_id)
+
+                        payload = {
+                            "event_type": "user_joined",
+                            "chat_id": str(chat_id),
+                            "chat_name": chat_title,
+                            "joined_user": {
+                                "id": str(user_info.get("id", user_id)),
+                                "first_name": user_info.get("first_name", ""),
+                                "last_name": user_info.get("last_name", ""),
+                                "username": user_info.get("username", "")
+                            },
+                            "timestamp": datetime.now().isoformat()
+                            # Opcional: adicionar quem adicionou
+                            # "added_by_user_id": str(event.added_by.id) if event.user_added and event.added_by else None
+                        }
+                        await self.send_to_webhook(payload)
+
+                # Exemplo: adicionar lógica para usuário saindo
+                elif event.user_left or event.user_kicked:
+                    chat = await event.get_chat()
+                    chat_id = event.chat_id
+                    chat_title = getattr(chat, 'title', '(Chat Desconhecido)')
+                    
+                    left_user_ids = event.user_ids
+                    if not left_user_ids:
+                         if hasattr(event, 'user_id') and event.user_id:
+                              left_user_ids = [event.user_id]
+                         else:
+                              logger.warning(f"Evento ChatAction (left/kick) sem user_ids ou user_id no chat {chat_id}")
+                              return
+
+                    logger.info(f"Detectado usuário(s) saindo do chat: {chat_title} ({chat_id}). IDs: {left_user_ids}")
+
+                    for user_id in left_user_ids:
+                         user_info = await self.get_user_info(user_id) # Tentar obter info, pode falhar se já saiu
+                         payload = {
+                            "event_type": "user_left",
+                            "chat_id": str(chat_id),
+                            "chat_name": chat_title,
+                            "left_user": {
+                                "id": str(user_info.get("id", user_id)),
+                                "first_name": user_info.get("first_name", ""),
+                                "last_name": user_info.get("last_name", ""),
+                                "username": user_info.get("username", "")
+                            },
+                            "timestamp": datetime.now().isoformat()
+                            # "kicked_by_user_id": str(event.kicked_by.id) if event.user_kicked and event.kicked_by else None
+                        }
+                         await self.send_to_webhook(payload)
+
             except Exception as e:
-                logger.error(f"Erro ao processar mensagem enviada: {e}")
-    
+                logger.error(f"Erro ao processar ChatAction: {e}", exc_info=True)
+
+        logger.info("Handlers de eventos configurados.")
+
     async def start(self, phone=None, code_callback=None, password_callback=None):
         """Inicia o cliente do Telegram com autenticação, usando callbacks opcionais."""
         # Definir função interna para obter a senha via callback

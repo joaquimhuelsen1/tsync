@@ -26,22 +26,8 @@ def print_colored(text, color):
     """Imprime texto colorido no terminal"""
     print(f"{color}{text}{Colors.ENDC}")
 
-def is_venv_activated():
-    """Verifica se um ambiente virtual está ativado"""
-    return hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)
-
 if __name__ == "__main__":
     print_colored("🚀 Iniciando o Telegram Sync Web...", Colors.HEADER + Colors.BOLD)
-
-    # Verificar se o venv está ativo
-    if not is_venv_activated():
-        print_colored("⚠️ Erro: Ambiente virtual (venv) não está ativado!", Colors.RED)
-        print_colored("   Por favor, ative o ambiente virtual antes de executar:", Colors.YELLOW)
-        print_colored("   No Linux/macOS: source venv/bin/activate", Colors.YELLOW)
-        print_colored("   No Windows:     .\\venv\\Scripts\\activate", Colors.YELLOW)
-        sys.exit(1)
-    else:
-        print_colored("✅ Ambiente virtual ativado.", Colors.GREEN)
 
     # Configurações do Uvicorn
     port = 8080

@@ -4,25 +4,40 @@
     # Defina variáveis de ambiente
     ENV PYTHONDONTWRITEBYTECODE 1 # Impede o Python de criar arquivos .pyc
     ENV PYTHONUNBUFFERED 1      # Garante que os logs apareçam imediatamente
-    ENV PORT 8080                 # Porta padrão que a aplicação usará internamente
 
-    # Crie e defina o diretório de trabalho
+    # Crie um usuário não-root e um grupo
+    RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+    # Crie o diretório de trabalho e defina permissões
     WORKDIR /app
+    # Não precisamos mais chown aqui, pois copiaremos com --chown
 
-    # Crie uma virtual environment
-    RUN python3 -m venv /app/venv
-    ENV PATH="/app/venv/bin:$PATH"
+    # Mude para o usuário não-root
+    USER appuser
 
     # Instale dependências primeiro para aproveitar o cache do Docker
-    COPY requirements.txt .
-    RUN pip install --no-cache-dir -r requirements.txt
+    # Copie apenas o requirements.txt
+    COPY --chown=appuser:appuser requirements.txt .
+    # Usar --user para instalar no diretório home do usuário não-root
+    # Adicionar --break-system-packages se necessário em bases slim mais recentes
+    RUN pip install --no-cache-dir --user -r requirements.txt 
 
-    # Copie o restante do código da aplicação para o diretório de trabalho
-    COPY . .
+    # Copie apenas os arquivos necessários da aplicação
+    # Garanta que as permissões estão corretas com --chown
+    COPY --chown=appuser:appuser main.py .
+    COPY --chown=appuser:appuser run.py .
+    COPY --chown=appuser:appuser telegram_sync.py .
+    COPY --chown=appuser:appuser static static/
+    COPY --chown=appuser:appuser templates templates/
+    # NÃO copie o diretório sessions/ ou venv/ ou logs ou .gitignore etc.
 
-    # Exponha a porta que o Gunicorn usará
+    # Exponha a porta que o Uvicorn (via run.py) usará
     EXPOSE 8080
 
-    # Defina o comando padrão para rodar a aplicação com Gunicorn e Eventlet
-    # Este comando será executado quando o container iniciar
-    CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:8080", "app:app"]
+    # Defina o comando padrão para rodar a aplicação com run.py
+    # O run.py agora define a porta e o reload 
+    # Adicionar o diretório local de binários do usuário ao PATH
+    ENV PATH="/home/appuser/.local/bin:${PATH}"
+
+    # Recomenda-se editar run.py para ter reload=False para produção Docker
+    CMD ["python", "run.py"]
